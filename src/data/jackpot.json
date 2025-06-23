@@ -1,0 +1,13 @@
+{
+    "preJackpot": {
+        "tickets": [],
+        "ticketCost": 10,
+        "ticketsNeeded": 10,
+        "prizePool": 0
+    },
+    "mainJackpot": {
+        "tickets": [],
+        "prizePool": 1000,
+        "drawTime": null
+    }
+} 

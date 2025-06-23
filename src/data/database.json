@@ -1,0 +1,22 @@
+{
+  "users": {
+    "587711397241290756": {
+      "balance": 1800,
+      "lastDaily": 1750709389240,
+      "stats": {
+        "played": 2,
+        "wins": 1,
+        "losses": 1
+      }
+    },
+    "1364110013089452114": {
+      "balance": 2450,
+      "lastDaily": 1750709398611,
+      "stats": {
+        "played": 1,
+        "wins": 1,
+        "losses": 0
+      }
+    }
+  }
+}
