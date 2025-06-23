@@ -1,4 +1,4 @@
-const { readDb, writeDb } = require('../data/database');
+const { readDb, writeDb, checkOverdueLoans } = require('../data/database');
 const { EmbedBuilder } = require('discord.js');
 
 module.exports = {
@@ -9,6 +9,24 @@ module.exports = {
         const choice = args[0]?.toLowerCase();
         const bet = parseInt(args[1]);
         const userId = message.author.id;
+
+        // Check for overdue loans
+        const loanCheck = checkOverdueLoans(userId);
+        if (loanCheck.hasOverdueLoans) {
+            const overdueLoan = loanCheck.overdueLoans[0];
+            const embed = new EmbedBuilder()
+                .setColor('#FF4757')
+                .setTitle('🚨 GAMES DISABLED 🚨')
+                .setDescription('You have an overdue loan! All games are disabled until you repay it.')
+                .addFields(
+                    { name: '💸 Overdue Amount', value: `$${overdueLoan.repayment.toLocaleString()}`, inline: true },
+                    { name: '🏦 Lender', value: `<@${overdueLoan.lenderId}>`, inline: true },
+                    { name: '⏰ Overdue Since', value: new Date(overdueLoan.deadline).toLocaleString(), inline: false },
+                    { name: '💰 How to Repay', value: 'Use `$daily` to earn money, then `$repay @lender`' }
+                )
+                .setFooter({ text: '🚨 Pay your debts to unlock games!' });
+            return message.reply({ embeds: [embed] });
+        }
 
         if (!['heads', 'tails'].includes(choice)) {
             return message.reply('You must choose "heads" or "tails".');

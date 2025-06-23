@@ -1,4 +1,4 @@
-const { readDb, writeDb } = require('../data/database');
+const { readDb, writeDb, checkOverdueLoans } = require('../data/database');
 const { EmbedBuilder } = require('discord.js');
 const fs = require('fs');
 const path = require('path');
@@ -75,7 +75,7 @@ function createAnimatedEmbed(guess, winning, result, user, newBalance, stats, cu
         embed.addFields(
             { name: '💰 Prize Won', value: `$${result.amount.toLocaleString()}`, inline: true },
             { name: '💳 New Balance', value: `$${newBalance.toLocaleString()}`, inline: true },
-            { name: '📊 Difference', value: `${Math.abs(guess - winning)} numbers`, inline: true },
+            { name: '�� Difference', value: `${Math.abs(guess - winning)} numbers`, inline: true },
             { name: '🎰 Current Jackpot', value: `$${nextJackpot.toLocaleString()}`, inline: false }
         );
     } else {
@@ -147,6 +147,24 @@ module.exports = {
         const guess = parseInt(args[0]);
         const userId = message.author.id;
 
+        // Check for overdue loans
+        const loanCheck = checkOverdueLoans(userId);
+        if (loanCheck.hasOverdueLoans) {
+            const overdueLoan = loanCheck.overdueLoans[0];
+            const embed = new EmbedBuilder()
+                .setColor('#FF4757')
+                .setTitle('🚨 GAMES DISABLED 🚨')
+                .setDescription('You have an overdue loan! All games are disabled until you repay it.')
+                .addFields(
+                    { name: '💸 Overdue Amount', value: `$${overdueLoan.repayment.toLocaleString()}`, inline: true },
+                    { name: '🏦 Lender', value: `<@${overdueLoan.lenderId}>`, inline: true },
+                    { name: '⏰ Overdue Since', value: new Date(overdueLoan.deadline).toLocaleString(), inline: false },
+                    { name: '💰 How to Repay', value: 'Use `$daily` to earn money, then `$repay @lender`' }
+                )
+                .setFooter({ text: '🚨 Pay your debts to unlock games!' });
+            return message.reply({ embeds: [embed] });
+        }
+
         // Input validation with styled embeds
         if (isNaN(guess) || guess < 1 || guess > numberRange) {
             const lotto = readLotto();
@@ -156,7 +174,6 @@ module.exports = {
                 .setDescription(`You must guess a number between **1** and **${numberRange}**!`)
                 .addFields(
                     { name: '📝 Usage', value: '`$lotto <number>`' },
-                    { name: '💡 Example', value: '`$lotto 42`' },
                     { name: '🎫 Ticket Cost', value: `$${ticketCost}` },
                     { name: '🎰 Current Jackpot', value: `$${lotto.jackpotPool.toLocaleString()}` }
                 )
