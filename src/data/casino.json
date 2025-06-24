@@ -1,0 +1,61 @@
+{
+  "users": {
+    "587711397241290756": {
+      "balance": 8742,
+      "stats": {
+        "gamesPlayed": 8,
+        "gamesWon": 5,
+        "totalWinnings": 11150,
+        "totalLost": 4408,
+        "biggestWin": 5000,
+        "winStreak": 0,
+        "currentStreak": 0
+      },
+      "daily": {
+        "lastClaim": 1750778249363,
+        "streak": 1
+      },
+      "loans": {
+        "borrowed": [],
+        "lent": []
+      },
+      "achievements": [],
+      "joinedAt": 1750771765453
+    }
+  },
+  "casino": {
+    "jackpot": 10000,
+    "totalPlayed": 0,
+    "totalWinnings": 0,
+    "dailyResets": {}
+  },
+  "leaderboard": {
+    "richest": [
+      {
+        "id": "587711397241290756",
+        "balance": 1000
+      }
+    ],
+    "biggestWins": [
+      {
+        "id": "587711397241290756",
+        "amount": 0
+      }
+    ],
+    "mostPlayed": [
+      {
+        "id": "587711397241290756",
+        "games": 0
+      }
+    ]
+  },
+  "settings": {
+    "dailyAmount": 1000,
+    "dailyCooldown": 86400000,
+    "maxLoanAmount": 5000,
+    "loanInterestRate": 0.1
+  },
+  "lottery": {
+    "jackpot": 10440
+  }
+}

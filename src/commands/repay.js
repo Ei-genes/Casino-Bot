@@ -1,130 +1,170 @@
-const { readDb, writeDb } = require('../data/database');
-const { EmbedBuilder } = require('discord.js');
-const fs = require('fs');
-const path = require('path');
-
-const loansPath = path.join(__dirname, '../data/loans.json');
-
-function readLoans() {
-    try {
-        const data = fs.readFileSync(loansPath, 'utf8');
-        return JSON.parse(data);
-    } catch (error) {
-        return { loans: [] };
-    }
-}
-
-function writeLoans(data) {
-    fs.writeFileSync(loansPath, JSON.stringify(data, null, 2));
-}
-
-function formatTimeRemaining(deadline) {
-    const now = Date.now();
-    const timeLeft = deadline - now;
-    
-    if (timeLeft <= 0) return 'OVERDUE';
-    
-    const hours = Math.floor(timeLeft / (1000 * 60 * 60));
-    const minutes = Math.floor((timeLeft % (1000 * 60 * 60)) / (1000 * 60));
-    
-    if (hours > 0) return `${hours}h ${minutes}m`;
-    return `${minutes}m`;
-}
-
-function isLoanOverdue(deadline) {
-    return Date.now() > deadline;
-}
+const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+const { getUser, getAllUserLoans, repayLoan } = require('../data/database');
 
 module.exports = {
     name: 'repay',
-    description: 'Repay a loan to another user.',
+    description: '💳 Repay a loan to another user',
+    aliases: ['payback', 'pay-loan'],
     async execute(message, args) {
-        const lender = message.mentions.users.first();
-        const borrowerId = message.author.id;
+        const targetUser = message.mentions.users.first();
+        const userId = message.author.id;
+        const user = getUser(userId);
+        const loans = getAllUserLoans(userId);
 
-        if (!lender) {
+        // Check if user has any loans to repay
+        if (loans.borrowed.length === 0) {
             const embed = new EmbedBuilder()
-                .setColor('#FF4757')
-                .setTitle('❌ Missing Lender')
-                .setDescription('You must mention the user you want to repay!')
+                .setColor('#4ECDC4')
+                .setTitle('✅ **No Outstanding Loans**')
+                .setDescription('**You have no loans to repay!**')
                 .addFields(
-                    { name: '📝 Usage', value: '`$repay @user`' }
+                    { name: '💰 **Your Balance**', value: `$${user.balance.toLocaleString()}`, inline: true },
+                    { name: '🎉 **Status**', value: 'Debt-free!', inline: true },
+                    { name: '💡 **Tip**', value: 'Use `$loan @user <amount>` to help friends!', inline: true }
                 )
-                .setFooter({ text: '🏦 Specify who you borrowed money from' });
-            return message.reply({ embeds: [embed] });
+                .setFooter({ text: '💳 You\'re all caught up!' });
+            return message.channel.send({ embeds: [embed] });
         }
 
-        const loans = readLoans();
-        const loanIndex = loans.loans.findIndex(l => l.borrowerId === borrowerId && l.lenderId === lender.id && l.status === 'active');
+        // If no specific user mentioned, show all loans
+        if (!targetUser) {
+            let loansList = '';
+            loans.borrowed.forEach((loan, index) => {
+                const isOverdue = Date.now() > loan.dueAt;
+                const status = isOverdue ? '🔴 **OVERDUE**' : '🟢 **Active**';
+                const dueText = isOverdue ? 'OVERDUE' : `<t:${Math.floor(loan.dueAt / 1000)}:R>`;
+                
+                loansList += `**${index + 1}.** <@${loan.lenderId}>\n`;
+                loansList += `└ Amount: $${loan.totalOwed.toLocaleString()} | Due: ${dueText} | ${status}\n\n`;
+            });
 
-        if (loanIndex === -1) {
             const embed = new EmbedBuilder()
-                .setColor('#FF4757')
-                .setTitle('🔍 No Active Loan Found')
-                .setDescription(`You do not have an active loan with **${lender.username}**.`)
+                .setColor(loans.overdue.length > 0 ? '#FF4757' : '#FFD700')
+                .setTitle('💳 **Your Outstanding Loans**')
+                .setDescription(`**You have ${loans.borrowed.length} loan(s) to repay**\n\n${loansList}`)
                 .addFields(
-                    { name: '💡 Note', value: 'Make sure you mentioned the correct lender or check if you already repaid this loan.' }
+                    { name: '📝 **How to Repay**', value: '`$repay @lender` - Repay a specific loan', inline: true },
+                    { name: '💰 **Your Balance**', value: `$${user.balance.toLocaleString()}`, inline: true },
+                    { name: '⚠️ **Overdue Loans**', value: `${loans.overdue.length} loan(s)`, inline: true }
                 )
-                .setThumbnail(lender.displayAvatarURL())
-                .setFooter({ text: '🏦 Double-check your active loans' });
-            return message.reply({ embeds: [embed] });
+                .setFooter({ text: '💳 Select a lender to repay!' });
+
+            if (loans.overdue.length > 0) {
+                embed.addFields({
+                    name: '🚫 **Gambling Status**',
+                    value: '**BLOCKED** - You cannot gamble until all overdue loans are repaid!\n*Daily bonuses still work*',
+                    inline: false
+                });
+            }
+
+            return message.channel.send({ embeds: [embed] });
         }
 
-        const loan = loans.loans[loanIndex];
-        const db = readDb();
-        const isOverdue = isLoanOverdue(loan.deadline);
-        const timeRemaining = formatTimeRemaining(loan.deadline);
+        // Find loan with specific lender
+        const loanToRepay = loans.borrowed.find(loan => loan.lenderId === targetUser.id);
 
-        if (db.users[borrowerId].balance < loan.repayment) {
-            const shortfall = loan.repayment - db.users[borrowerId].balance;
+        if (!loanToRepay) {
             const embed = new EmbedBuilder()
                 .setColor('#FF4757')
-                .setTitle('💸 Insufficient Funds')
-                .setDescription(`You don't have enough money to repay this loan!`)
+                .setTitle('❌ **No Loan Found**')
+                .setDescription(`**You don't have any loans from ${targetUser.username}!**`)
                 .addFields(
-                    { name: '💰 Required', value: `$${loan.repayment.toLocaleString()}`, inline: true },
-                    { name: '💳 Your Balance', value: `$${db.users[borrowerId].balance.toLocaleString()}`, inline: true },
-                    { name: '💸 Shortfall', value: `$${shortfall.toLocaleString()}`, inline: true },
-                    { name: '⏰ Status', value: isOverdue ? '🚨 **OVERDUE**' : `⏳ ${timeRemaining} remaining`, inline: false },
-                    { name: '💡 Earn Money', value: isOverdue ? '🚨 **You are banned from games!** Use `$daily` to earn money.' : 'Use `$daily` for free coins or play games to earn money!', inline: false }
+                    { name: '💡 **Check Your Loans**', value: 'Use `$repay` to see all your loans', inline: true },
+                    { name: '💰 **Your Balance**', value: `$${user.balance.toLocaleString()}`, inline: true }
                 )
-                .setThumbnail(lender.displayAvatarURL())
-                .setFooter({ text: isOverdue ? '🚨 URGENT: Loan is overdue! Games are disabled!' : '💰 Earn more money to repay your loan' });
-            return message.reply({ embeds: [embed] });
+                .setFooter({ text: '💳 Make sure you mentioned the right lender!' });
+            return message.channel.send({ embeds: [embed] });
         }
+
+        if (user.balance < loanToRepay.totalOwed) {
+            const embed = new EmbedBuilder()
+                .setColor('#FF4757')
+                .setTitle('💸 **Insufficient Funds**')
+                .setDescription(`**You need $${loanToRepay.totalOwed.toLocaleString()} to repay this loan!**`)
+                .addFields(
+                    { name: '💰 **Required**', value: `$${loanToRepay.totalOwed.toLocaleString()}`, inline: true },
+                    { name: '💳 **Your Balance**', value: `$${user.balance.toLocaleString()}`, inline: true },
+                    { name: '💡 **Tip**', value: 'Use `$daily` to get free coins!', inline: true }
+                )
+                .setFooter({ text: '💰 Earn more money to repay your loan!' });
+            return message.channel.send({ embeds: [embed] });
+        }
+
+        // Create loading animation
+        const loadingEmbed = new EmbedBuilder()
+            .setColor('#FFD700')
+            .setTitle('💳 Processing Repayment...')
+            .setDescription('```\n⠋ Verifying loan details...\n⠙ Processing payment...\n⠹ Updating records...\n```')
+            .addFields(
+                { name: '👤 **Borrower**', value: message.author.username, inline: true },
+                { name: '👥 **Lender**', value: targetUser.username, inline: true },
+                { name: '💰 **Amount**', value: `$${loanToRepay.totalOwed.toLocaleString()}`, inline: true }
+            );
+
+        const repayMessage = await message.channel.send({ embeds: [loadingEmbed] });
+        await new Promise(resolve => setTimeout(resolve, 2500));
 
         // Process repayment
-        db.users[borrowerId].balance -= loan.repayment;
-        db.users[loan.lenderId].balance += loan.repayment;
+        const result = repayLoan(userId, loanToRepay.id);
 
-        loan.status = 'paid';
-        loan.repaidAt = Date.now();
+        if (!result.success) {
+            const errorEmbed = new EmbedBuilder()
+                .setColor('#FF4757')
+                .setTitle('❌ **Repayment Failed**')
+                .setDescription(`**${result.message}**`)
+                .setFooter({ text: '💳 Please try again!' });
+            return repayMessage.edit({ embeds: [errorEmbed] });
+        }
 
-        writeDb(db);
-        writeLoans(loans);
+        const isOverdue = Date.now() > loanToRepay.dueAt;
+        const updatedUser = getUser(userId);
 
-        const interestPaid = loan.repayment - loan.amount;
-        const loanDuration = Math.floor((Date.now() - (loan.deadline - 24 * 60 * 60 * 1000)) / (1000 * 60 * 60));
-
-        const embed = new EmbedBuilder()
+        // Success embed
+        const successEmbed = new EmbedBuilder()
             .setColor('#00FF7F')
-            .setTitle('✅ LOAN SUCCESSFULLY REPAID! ✅')
-            .setDescription(`🎉 You have successfully repaid your loan to **${lender.username}**!`)
+            .setTitle('✅ **Loan Repaid Successfully!**')
+            .setDescription(`**${message.author.username}** has repaid their loan to **${targetUser.username}**`)
             .addFields(
-                { name: '💰 Original Loan', value: `$${loan.amount.toLocaleString()}`, inline: true },
-                { name: '💸 Total Repaid', value: `$${loan.repayment.toLocaleString()}`, inline: true },
-                { name: '📈 Interest Paid', value: `$${interestPaid.toLocaleString()}`, inline: true },
-                { name: '💳 Your New Balance', value: `$${db.users[borrowerId].balance.toLocaleString()}`, inline: true },
-                { name: '🏦 Lender Received', value: `$${loan.repayment.toLocaleString()}`, inline: true },
-                { name: '📊 Interest Rate', value: '25%', inline: true },
-                { name: '⏰ Loan Duration', value: `${loanDuration} hours`, inline: true },
-                { name: '🎮 Game Status', value: isOverdue ? '🎉 **Games Re-enabled!**' : '✅ **Games Available**', inline: true },
-                { name: '📈 Credit Score', value: isOverdue ? '📉 Late Payment' : '📈 On-time Payment', inline: true }
+                {
+                    name: '💰 **Payment Details**',
+                    value: `**Principal:** $${loanToRepay.amount.toLocaleString()}\n**Interest:** $${loanToRepay.interest.toLocaleString()}\n**Total Paid:** $${loanToRepay.totalOwed.toLocaleString()}`,
+                    inline: true
+                },
+                {
+                    name: '💳 **Account Status**',
+                    value: `**New Balance:** $${updatedUser.balance.toLocaleString()}\n**Status:** ${isOverdue ? '🔴 Was Overdue' : '🟢 Paid On Time'}\n**Gambling:** ${getAllUserLoans(userId).overdue.length === 0 ? '✅ Unlocked' : '🔒 Still Blocked'}`,
+                    inline: true
+                },
+                {
+                    name: '🎉 **Congratulations!**',
+                    value: `${isOverdue ? 'Better late than never!' : 'Paid on time - great job!'}\n${getAllUserLoans(userId).overdue.length === 0 ? '🎰 You can now gamble again!' : '⚠️ You still have overdue loans'}`,
+                    inline: false
+                }
             )
-            .setThumbnail(lender.displayAvatarURL())
-            .setFooter({ text: isOverdue ? '🎊 Welcome back to the casino! Your games are now unlocked!' : '🎊 Thank you for your timely payment!' })
+            .setFooter({ 
+                text: `💳 Loan repaid successfully | Remaining loans: ${getAllUserLoans(userId).borrowed.length}`,
+                iconURL: message.client.user.displayAvatarURL()
+            })
             .setTimestamp();
 
-        await message.channel.send({ embeds: [embed] });
-    },
+        await repayMessage.edit({ embeds: [successEmbed] });
+
+        // Send DM to lender
+        try {
+            const dmEmbed = new EmbedBuilder()
+                .setColor('#00FF7F')
+                .setTitle('💰 **Loan Repaid!**')
+                .setDescription(`**${message.author.username}** has repaid their loan to you!`)
+                .addFields(
+                    { name: '💳 **Amount Received**', value: `$${loanToRepay.totalOwed.toLocaleString()}`, inline: true },
+                    { name: '📈 **Interest Earned**', value: `$${loanToRepay.interest.toLocaleString()}`, inline: true },
+                    { name: '⏰ **Status**', value: isOverdue ? '🔴 Late Payment' : '🟢 On Time', inline: true }
+                )
+                .setFooter({ text: '💰 Thanks for helping the community!' });
+
+            await targetUser.send({ embeds: [dmEmbed] });
+        } catch (error) {
+            // DM failed, that's okay
+        }
+    }
 }; 

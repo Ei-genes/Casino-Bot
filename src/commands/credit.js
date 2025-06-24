@@ -1,148 +1,145 @@
-const { readDb, writeDb } = require('../data/database');
-const { ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder } = require('discord.js');
-const fs = require('fs');
-const path = require('path');
-
-const loansPath = path.join(__dirname, '../data/loans.json');
-
-function readLoans() {
-    try {
-        const data = fs.readFileSync(loansPath, 'utf8');
-        return JSON.parse(data);
-    } catch (error) {
-        return { loans: [] };
-    }
-}
-
-function writeLoans(data) {
-    fs.writeFileSync(loansPath, JSON.stringify(data, null, 2));
-}
+const { EmbedBuilder } = require('discord.js');
+const { getUser, getAllUserLoans } = require('../data/database');
 
 module.exports = {
     name: 'credit',
-    description: 'Request a loan from another user.',
-    aliases: ['loan', 'borrow'],
+    description: '📊 View your loan status and credit information',
+    aliases: ['loans', 'debt', 'loan-status'],
     async execute(message, args) {
-        const lender = message.mentions.users.first();
-        const amount = parseInt(args[1]);
-        const borrower = message.author;
+        const userId = message.author.id;
+        const user = getUser(userId);
+        const loans = getAllUserLoans(userId);
 
-        if (!lender) {
-            const embed = new EmbedBuilder()
-                .setColor('#FF4757')
-                .setTitle('❌ Missing Lender')
-                .setDescription('You must mention a user to request a loan from!')
-                .addFields(
-                    { name: '📝 Usage', value: '`$credit @user <amount>`' }
-                )
-                .setFooter({ text: '🏦 Choose someone who can afford to lend you money' });
-            return message.reply({ embeds: [embed] });
-        }
-        if (lender.bot) {
-            const embed = new EmbedBuilder()
-                .setColor('#FF4757')
-                .setTitle('🤖 Invalid Lender')
-                .setDescription('You cannot request a loan from a bot!')
-                .setFooter({ text: '🏦 Bots don\'t have money to lend' });
-            return message.reply({ embeds: [embed] });
-        }
-        if (lender.id === borrower.id) {
-            const embed = new EmbedBuilder()
-                .setColor('#FF4757')
-                .setTitle('🪞 Self-Loan Denied')
-                .setDescription('You cannot request a loan from yourself!')
-                .setFooter({ text: '🏦 Find someone else to lend you money' });
-            return message.reply({ embeds: [embed] });
-        }
-        if (isNaN(amount) || amount <= 0) {
-            const embed = new EmbedBuilder()
-                .setColor('#FF4757')
-                .setTitle('💸 Invalid Amount')
-                .setDescription('You must provide a valid positive amount for the loan!')
-                .setFooter({ text: '🏦 Specify how much you want to borrow' });
-            return message.reply({ embeds: [embed] });
-        }
+        // Create loading animation
+        const loadingEmbed = new EmbedBuilder()
+            .setColor('#FFD700')
+            .setTitle('📊 Loading Credit Report...')
+            .setDescription('```\n⠋ Accessing loan database...\n⠙ Calculating totals...\n⠹ Preparing report...\n```')
+            .setThumbnail(message.author.displayAvatarURL());
 
-        const db = readDb();
-        if (!db.users[lender.id] || db.users[lender.id].balance < amount) {
-            const embed = new EmbedBuilder()
-                .setColor('#FF4757')
-                .setTitle('💳 Insufficient Lender Funds')
-                .setDescription(`**${lender.username}** does not have enough money to give you this loan.`)
-                .addFields(
-                    { name: '💰 Loan Requested', value: `$${amount.toLocaleString()}`, inline: true },
-                    { name: '💳 Lender Balance', value: `$${db.users[lender.id]?.balance?.toLocaleString() || '0'}`, inline: true }
-                )
-                .setThumbnail(lender.displayAvatarURL())
-                .setFooter({ text: '🏦 Try requesting a smaller amount or find another lender' });
-            return message.reply({ embeds: [embed] });
-        }
+        const msg = await message.channel.send({ embeds: [loadingEmbed] });
+        await new Promise(resolve => setTimeout(resolve, 2000));
 
-        // Check if borrower already has active loans
-        const loans = readLoans();
-        const activeLoans = loans.loans.filter(l => l.borrowerId === borrower.id && l.status === 'active');
+        // Calculate totals
+        const totalBorrowed = loans.borrowed.reduce((sum, loan) => sum + loan.totalOwed, 0);
+        const totalLent = loans.lent.reduce((sum, loan) => sum + loan.totalOwed, 0);
+        const overdueCount = loans.overdue.length;
+        const isBlocked = overdueCount > 0;
+
+        // Determine credit status
+        let creditStatus = '🟢 **Excellent**';
+        let creditColor = '#00FF7F';
         
-        if (activeLoans.length > 0) {
-            const embed = new EmbedBuilder()
-                .setColor('#FF4757')
-                .setTitle('⚠️ Active Loan Exists')
-                .setDescription('You already have an active loan! You must repay it before requesting another.')
-                .addFields(
-                    { name: '💸 Current Debt', value: `$${activeLoans[0].repayment.toLocaleString()}`, inline: true },
-                    { name: '🏦 Lender', value: `<@${activeLoans[0].lenderId}>`, inline: true }
-                )
-                .setFooter({ text: '🏦 Use $repay to pay off your existing loan first' });
-            return message.reply({ embeds: [embed] });
+        if (overdueCount > 0) {
+            creditStatus = '🔴 **Poor - Overdue Loans**';
+            creditColor = '#FF4757';
+        } else if (loans.borrowed.length > 3) {
+            creditStatus = '🟡 **Fair - High Debt**';
+            creditColor = '#FFD700';
+        } else if (loans.borrowed.length > 0) {
+            creditStatus = '🟠 **Good - Active Loans**';
+            creditColor = '#FFA500';
         }
 
-        const loanId = `${borrower.id}-${lender.id}-${Date.now()}`;
-        const repaymentAmount = Math.floor(amount * 1.25);
-        const interestAmount = repaymentAmount - amount;
-        const deadline = Date.now() + (24 * 60 * 60 * 1000); // 24 hours from now
-        
-        const row = new ActionRowBuilder()
-            .addComponents(
-                new ButtonBuilder()
-                    .setCustomId(`acceptloan_${loanId}`)
-                    .setLabel('✅ Accept Loan')
-                    .setStyle(ButtonStyle.Success),
-                new ButtonBuilder()
-                    .setCustomId(`declineloan_${loanId}`)
-                    .setLabel('❌ Decline')
-                    .setStyle(ButtonStyle.Danger),
+        const creditEmbed = new EmbedBuilder()
+            .setColor(creditColor)
+            .setTitle(`📊 ${message.author.username}'s Credit Report`)
+            .setDescription(`**Credit Status:** ${creditStatus}\n**Gambling Access:** ${isBlocked ? '🔒 **BLOCKED**' : '✅ **Available**'}`)
+            .setThumbnail(message.author.displayAvatarURL())
+            .addFields(
+                {
+                    name: '💰 **Financial Overview**',
+                    value: `**Current Balance:** $${user.balance.toLocaleString()}\n**Total Debt:** $${totalBorrowed.toLocaleString()}\n**Total Lent:** $${totalLent.toLocaleString()}`,
+                    inline: true
+                },
+                {
+                    name: '📈 **Loan Summary**',
+                    value: `**Active Loans:** ${loans.borrowed.length}\n**Loans Given:** ${loans.lent.length}\n**Overdue Loans:** ${overdueCount}`,
+                    inline: true
+                },
+                {
+                    name: '🎯 **Net Position**',
+                    value: `**Net Amount:** ${totalLent - totalBorrowed >= 0 ? '+' : ''}$${(totalLent - totalBorrowed).toLocaleString()}\n**Status:** ${totalLent > totalBorrowed ? 'Creditor' : totalBorrowed > totalLent ? 'Debtor' : 'Neutral'}`,
+                    inline: true
+                }
             );
 
-        const embed = new EmbedBuilder()
-            .setColor('#FFD700')
-            .setTitle('🏦 LOAN REQUEST 🏦')
-            .setDescription(`${lender}, **${borrower.username}** is requesting a loan from you!`)
-            .addFields(
-                { name: '👤 Borrower', value: `${borrower.username}`, inline: true },
-                { name: '💰 Loan Amount', value: `$${amount.toLocaleString()}`, inline: true },
-                { name: '📈 Interest Rate', value: '25%', inline: true },
-                { name: '💸 Total Repayment', value: `$${repaymentAmount.toLocaleString()}`, inline: true },
-                { name: '💵 Interest Fee', value: `$${interestAmount.toLocaleString()}`, inline: true },
-                { name: '⏰ Repayment Deadline', value: '24 Hours', inline: true },
-                { name: '⚠️ Warning', value: 'If not repaid within 24 hours, borrower will be **banned from all games** until loan is repaid!', inline: false }
-            )
-            .setThumbnail(borrower.displayAvatarURL())
-            .setFooter({ text: '🏦 Click Accept to approve this loan request' })
-            .setTimestamp();
+        // Add borrowed loans section
+        if (loans.borrowed.length > 0) {
+            let borrowedList = '';
+            loans.borrowed.forEach((loan, index) => {
+                const isOverdue = Date.now() > loan.dueAt;
+                const status = isOverdue ? '🔴 **OVERDUE**' : '🟢 **Active**';
+                const dueText = isOverdue ? '**OVERDUE**' : `<t:${Math.floor(loan.dueAt / 1000)}:R>`;
+                
+                borrowedList += `**${index + 1}.** <@${loan.lenderId}>\n`;
+                borrowedList += `└ $${loan.totalOwed.toLocaleString()} due ${dueText} ${status}\n`;
+            });
 
-        await message.channel.send({
-            embeds: [embed],
-            components: [row],
+            creditEmbed.addFields({
+                name: '💸 **Your Borrowed Loans**',
+                value: borrowedList,
+                inline: false
+            });
+        }
+
+        // Add lent loans section
+        if (loans.lent.length > 0) {
+            let lentList = '';
+            loans.lent.forEach((loan, index) => {
+                const isOverdue = Date.now() > loan.dueAt;
+                const status = isOverdue ? '🔴 **OVERDUE**' : '🟢 **Active**';
+                const dueText = isOverdue ? '**OVERDUE**' : `<t:${Math.floor(loan.dueAt / 1000)}:R>`;
+                
+                lentList += `**${index + 1}.** <@${loan.borrowerId}>\n`;
+                lentList += `└ $${loan.totalOwed.toLocaleString()} due ${dueText} ${status}\n`;
+            });
+
+            creditEmbed.addFields({
+                name: '💰 **Your Lent Money**',
+                value: lentList,
+                inline: false
+            });
+        }
+
+        // Add special warnings or notices
+        if (isBlocked) {
+            creditEmbed.addFields({
+                name: '🚫 **Gambling Restriction**',
+                value: '**You are BLOCKED from gambling due to overdue loans!**\n• Repay overdue loans to unlock gambling\n• Daily bonuses still work\n• Use `$repay @lender` to pay back loans',
+                inline: false
+            });
+        }
+
+        if (loans.borrowed.length === 0 && loans.lent.length === 0) {
+            creditEmbed.addFields({
+                name: '✨ **Clean Slate**',
+                value: '**You have no active loans!**\n• Perfect credit status\n• No debt or obligations\n• Ready to help friends with `$loan @user <amount>`',
+                inline: false
+            });
+        }
+
+        // Add helpful commands
+        let commandsList = '';
+        if (loans.borrowed.length > 0) {
+            commandsList += '`$repay @lender` - Repay a specific loan\n';
+        }
+        if (user.balance >= 100) {
+            commandsList += '`$loan @user <amount>` - Lend money to friends\n';
+        }
+        commandsList += '`$transfer @user <amount>` - Send money directly';
+
+        creditEmbed.addFields({
+            name: '💡 **Available Commands**',
+            value: commandsList,
+            inline: false
         });
-        
-        loans.loans.push({
-            id: loanId,
-            borrowerId: borrower.id,
-            lenderId: lender.id,
-            amount: amount,
-            repayment: repaymentAmount,
-            deadline: deadline,
-            status: 'pending'
-        });
-        writeLoans(loans);
-    },
+
+        creditEmbed.setFooter({ 
+            text: `📊 Credit Report | Interest Rate: 10% | Max Loan: $5,000`,
+            iconURL: message.client.user.displayAvatarURL()
+        }).setTimestamp();
+
+        await msg.edit({ embeds: [creditEmbed] });
+    }
 }; 

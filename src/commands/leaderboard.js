@@ -1,42 +1,201 @@
-const { EmbedBuilder } = require('discord.js');
-const { readDb } = require('../data/database');
+const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
+const { readDb, updateLeaderboard } = require('../data/database');
 
 module.exports = {
     name: 'leaderboard',
-    description: 'Displays the top 10 richest users.',
-    aliases: ['lb', 'top'],
+    description: '🏆 View the casino leaderboards',
+    aliases: ['lb', 'top', 'rankings'],
     async execute(message, args) {
+        // Update leaderboard data
+        updateLeaderboard();
         const db = readDb();
-        const users = db.users;
+        
+        const categories = [
+            {
+                name: '💰 Richest Players',
+                key: 'richest',
+                description: 'Top players by current balance',
+                emoji: '💰',
+                color: '#FFD700'
+            },
+            {
+                name: '💎 Biggest Wins',
+                key: 'biggestWins',
+                description: 'Largest single wins in casino history',
+                emoji: '💎',
+                color: '#FF6B35'
+            },
+            {
+                name: '🎮 Most Active',
+                key: 'mostPlayed',
+                description: 'Players with most games played',
+                emoji: '🎮',
+                color: '#4ECDC4'
+            }
+        ];
 
-        const sortedUsers = Object.entries(users)
-            .sort(([, a], [, b]) => b.balance - a.balance)
-            .slice(0, 10);
+        let currentCategory = 0;
 
-        const embed = new EmbedBuilder()
-            .setTitle('🏆 Casino Leaderboard 🏆')
-            .setColor('#FFD700')
-            .setThumbnail('https://cdn.discordapp.com/emojis/741090681077211157.png');
+        const createLeaderboardEmbed = async (categoryIndex) => {
+            const category = categories[categoryIndex];
+            const leaderboardData = db.leaderboard[category.key];
+            
+            const embed = new EmbedBuilder()
+                .setColor(category.color)
+                .setTitle(`🏆 **${category.name}** 🏆`)
+                .setDescription(`**${category.description}**\n*Updated in real-time*`)
+                .setThumbnail(message.guild?.iconURL() || null)
+                .setFooter({ 
+                    text: `🎰 Casino Leaderboards | Category ${categoryIndex + 1}/${categories.length}`,
+                    iconURL: message.client.user.displayAvatarURL()
+                })
+                .setTimestamp();
 
-        if (sortedUsers.length === 0) {
-            embed.setDescription('🏜️ The leaderboard is currently empty.\n\nStart gambling to claim your spot!');
-        } else {
+            if (leaderboardData.length === 0) {
+                embed.addFields({
+                    name: '📝 **No Data Available**',
+                    value: 'No players have been ranked in this category yet.\nStart playing to appear on the leaderboard!',
+                    inline: false
+                });
+                return embed;
+            }
+
+            // Create leaderboard entries
+            let leaderboardText = '';
             const medals = ['🥇', '🥈', '🥉'];
-            const leaderboard = await Promise.all(sortedUsers.map(async ([id, data], index) => {
+            
+            for (let i = 0; i < Math.min(leaderboardData.length, 10); i++) {
+                const entry = leaderboardData[i];
+                const position = i + 1;
+                const medal = i < 3 ? medals[i] : `**${position}.**`;
+                
                 try {
-                    const user = await message.client.users.fetch(id);
-                    const medal = medals[index] || `${index + 1}.`;
-                    const crown = index === 0 ? '👑 ' : '';
-                    return `${medal} ${crown}**${user.username}** - $${data.balance.toLocaleString()}`;
-                } catch {
-                    const medal = medals[index] || `${index + 1}.`;
-                    return `${medal} **Unknown User** - $${data.balance.toLocaleString()}`;
+                    const user = await message.client.users.fetch(entry.id);
+                    const username = user.username;
+                    
+                    let value = '';
+                    if (category.key === 'richest') {
+                        value = `$${entry.balance.toLocaleString()}`;
+                    } else if (category.key === 'biggestWins') {
+                        value = `$${entry.amount.toLocaleString()}`;
+                    } else if (category.key === 'mostPlayed') {
+                        value = `${entry.games} games`;
+                    }
+                    
+                    leaderboardText += `${medal} **${username}** - ${value}\n`;
+                } catch (error) {
+                    // User not found, skip
+                    continue;
                 }
-            }));
-            embed.setDescription(leaderboard.join('\n'));
-            embed.setFooter({ text: '💰 Keep gambling to climb the ranks!' });
-        }
+            }
 
-        await message.channel.send({ embeds: [embed] });
-    },
+            if (leaderboardText) {
+                embed.addFields({
+                    name: `${category.emoji} **Top Players**`,
+                    value: leaderboardText,
+                    inline: false
+                });
+            }
+
+            // Add user's ranking if they're not in top 10
+            const userRanking = leaderboardData.findIndex(entry => entry.id === message.author.id);
+            if (userRanking !== -1 && userRanking >= 10) {
+                let userValue = '';
+                const userEntry = leaderboardData[userRanking];
+                
+                if (category.key === 'richest') {
+                    userValue = `$${userEntry.balance.toLocaleString()}`;
+                } else if (category.key === 'biggestWins') {
+                    userValue = `$${userEntry.amount.toLocaleString()}`;
+                } else if (category.key === 'mostPlayed') {
+                    userValue = `${userEntry.games} games`;
+                }
+
+                embed.addFields({
+                    name: '📍 **Your Ranking**',
+                    value: `**#${userRanking + 1}** ${message.author.username} - ${userValue}`,
+                    inline: false
+                });
+            } else if (userRanking === -1) {
+                embed.addFields({
+                    name: '📍 **Your Ranking**',
+                    value: 'Not ranked yet - start playing to appear on the leaderboard!',
+                    inline: false
+                });
+            }
+
+            return embed;
+        };
+
+        const createButtons = () => {
+            return new ActionRowBuilder()
+                .addComponents(
+                    new ButtonBuilder()
+                        .setCustomId('lb_prev')
+                        .setLabel('◀️ Previous')
+                        .setStyle(ButtonStyle.Secondary)
+                        .setDisabled(currentCategory === 0),
+                    new ButtonBuilder()
+                        .setCustomId('lb_refresh')
+                        .setLabel('🔄 Refresh')
+                        .setStyle(ButtonStyle.Primary),
+                    new ButtonBuilder()
+                        .setCustomId('lb_next')
+                        .setLabel('Next ▶️')
+                        .setStyle(ButtonStyle.Secondary)
+                        .setDisabled(currentCategory === categories.length - 1)
+                );
+        };
+
+        // Create loading embed
+        const loadingEmbed = new EmbedBuilder()
+            .setColor('#9B59B6')
+            .setTitle('🏆 Loading Leaderboards...')
+            .setDescription('```\n⠋ Fetching player data...\n⠙ Calculating rankings...\n⠹ Preparing display...\n```');
+
+        const leaderboardMessage = await message.channel.send({ embeds: [loadingEmbed] });
+        
+        // Simulate loading
+        await new Promise(resolve => setTimeout(resolve, 1500));
+
+        const initialEmbed = await createLeaderboardEmbed(currentCategory);
+        await leaderboardMessage.edit({
+            embeds: [initialEmbed],
+            components: [createButtons()]
+        });
+
+        const collector = leaderboardMessage.createMessageComponentCollector({
+            time: 300000 // 5 minutes
+        });
+
+        collector.on('collect', async (interaction) => {
+            if (interaction.user.id !== message.author.id) {
+                return interaction.reply({
+                    content: '❌ You can only control your own leaderboard view!',
+                    ephemeral: true
+                });
+            }
+
+            if (interaction.customId === 'lb_prev' && currentCategory > 0) {
+                currentCategory--;
+            } else if (interaction.customId === 'lb_next' && currentCategory < categories.length - 1) {
+                currentCategory++;
+            } else if (interaction.customId === 'lb_refresh') {
+                updateLeaderboard();
+                // Category stays the same for refresh
+            }
+
+            const updatedEmbed = await createLeaderboardEmbed(currentCategory);
+            await interaction.update({
+                embeds: [updatedEmbed],
+                components: [createButtons()]
+            });
+        });
+
+        collector.on('end', () => {
+            leaderboardMessage.edit({
+                components: []
+            }).catch(() => {});
+        });
+    }
 }; 

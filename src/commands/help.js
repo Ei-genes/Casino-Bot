@@ -1,54 +1,168 @@
-const { EmbedBuilder } = require('discord.js');
+                                                                                                                                                                                                                                const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 
 module.exports = {
     name: 'help',
-    description: 'Displays all available commands.',
+    description: '🎰 Display all casino commands with beautiful interface',
     aliases: ['h', 'commands'],
     async execute(message, args) {
-        const embed = new EmbedBuilder()
-            .setColor('#5865F2')
-            .setTitle('🎰 Casino Bot Commands 🎰')
-            .setDescription('Welcome to the casino! Here are all the available commands:')
-            .addFields(
-                { 
-                    name: '💰 Economy Commands', 
-                    value: '`$balance` - Check your balance\n`$daily` - Claim daily reward (2000 coins)\n`$transfer <user> <amount>` - Send money to another user\n`$leaderboard` - See the richest players\n`$stats [user]` - View gambling statistics', 
-                    inline: false 
-                },
-                { 
-                    name: '🎲 Casino Games', 
-                    value: '`$blackjack <amount>` - Play blackjack (21)\n`$coinflip <heads/tails> <amount>` - Bet on a coin flip\n`$dice <amount>` - Roll a dice (win on 6, 5x payout)\n`$slots <amount>` - Play the slot machine\n`$roulette <bet_type> <amount>` - Play roulette', 
-                    inline: false 
-                },
-                { 
-                    name: '🎰 Growing Jackpot Lottery', 
-                    value: '`$lotto <number>` - Play growing jackpot lottery! ($100, pick 1-100)\n• 🎊 **Growing Jackpot**: Starts at $10K, +$50 per ticket\n• 🔥 Close Win: $2,500 (±1 number)\n• ⚡ Near Miss: $500 (±2-3 numbers)\n• 🎁 Consolation: $150 (±4-10 numbers)\n`$lotto_pool` - View current jackpot & statistics', 
-                    inline: false 
-                },
-                { 
-                    name: '🎮 Interactive Games', 
-                    value: '`$connect4 @user` - Challenge someone to Connect 4\n`$blackjack <amount>` - Interactive blackjack with buttons', 
-                    inline: false 
-                },
-                { 
-                    name: '🎯 Roulette Bet Types', 
-                    value: '• `red/black` - Bet on color (2x payout)\n• `even/odd` - Bet on even or odd (2x payout)\n• `high/low` - Bet on 1-18 or 19-36 (2x payout)\n• `0-36` - Bet on specific number (35x payout)', 
-                    inline: false 
-                },
-                { 
-                    name: '🏦 Credit & Loans', 
-                    value: '`$credit @user <amount>` - Request a loan (25% interest)\n`$repay @user` - Repay your loan with interest', 
-                    inline: false 
-                },
-                { 
-                    name: '🎰 Special Features', 
-                    value: '`$jackpot status` - View jackpot information\n`$jackpot buy <amount>` - Buy pre-jackpot tickets', 
-                    inline: false 
-                }
-            )
-            .setFooter({ text: '🍀 Good luck and gamble responsibly! 🎊' })
-            .setTimestamp();
+        const pages = [
+            {
+                title: '🎰 CASINO GAMES 🎰',
+                description: '**Welcome to the Ultimate Casino Experience!**\n*Click the buttons below to navigate through different categories*',
+                fields: [
+                    {
+                        name: '🎰 **SLOT GAMES**',
+                        value: '`$slots` - 🎰 Spin the slot machine for massive jackpots!\n`$dice` - 🎲 Roll dice and win guaranteed prizes',
+                        inline: true
+                    },
+                    {
+                        name: '🃏 **CARD GAMES**',
+                        value: '`$blackjack` - 🃏 Beat the dealer in classic 21\n`$baccarat` - 🎴 Player vs Banker card battle\n`$war` - ⚔️ Highest card wins the war!',
+                        inline: true
+                    },
+                    {
+                        name: '🎯 **TABLE GAMES**',
+                        value: '`$roulette` - 🎰 Bet on red, black, or numbers\n`$coinflip` - 🪙 Double or nothing coin toss\n`$wheel` - 🎪 Spin the Wheel of Fortune!\n`$plinko` - 🎯 Drop balls down the peg board',
+                        inline: true
+                    },
+                    {
+                                        name: '🎫 **LOTTERY & NUMBERS**',
+                value: '`$lottery <number>` - 🎫 Pick a number 1-250 for the mega jackpot!\n`$crash` - 🚀 Cash out before the rocket crashes\n`$mines` - 💣 Navigate the minefield safely',
+                        inline: true
+                    },
+                    {
+                        name: '💰 **ECONOMY**',
+                        value: '`$balance` - 💳 Check your casino balance\n`$daily` - 🎁 Claim your daily bonus\n`$transfer <@user> <amount>` - 💸 Send money to friends',
+                        inline: false
+                    }
+                ],                          
+                color: '#FFD700',
+                thumbnail: '🎰'
+            },
+            {
+                title: '💰 ECONOMY & BANKING 💰',
+                description: '**Manage your casino finances like a pro!**',
+                fields: [
+                    {
+                        name: '💳 **BALANCE & MONEY**',
+                        value: '`$balance` - 💰 View your current balance\n`$daily` - 🎁 Claim $1,000 daily bonus (24h cooldown)\n`$transfer <@user> <amount>` - 💸 Send money to other players',
+                        inline: false
+                    },
+                    {
+                        name: '🏦 **LOANS & CREDIT**',
+                        value: '`$loan <@user> <amount>` - 💰 Lend money to friends\n`$repay <@user>` - 💳 Pay back your loans\n`$credit` - 📊 View your loan status',
+                        inline: false
+                    },
+                    {
+                        name: '💡 **TIPS**',
+                        value: '• Start with $1,000 free money!\n• Use daily bonus to build your bankroll\n• Loans have 10% interest and 24h deadline\n• Overdue loans BLOCK gambling (not daily)\n• Transfer money to help friends',
+                        inline: false
+                    }
+                ],
+                color: '#00FF7F',
+                thumbnail: '💰'
+            },
+            {
+                title: '📊 STATS & LEADERBOARDS 📊',
+                description: '**Track your progress and compete with others!**',
+                fields: [
+                    {
+                        name: '📈 **YOUR STATS**',
+                        value: '`$stats` - 📊 View your detailed gaming statistics\n`$balance` - 💰 Check balance and recent activity',
+                        inline: true
+                    },
+                    {
+                        name: '🏆 **LEADERBOARDS**',
+                        value: '`$leaderboard` - 🥇 Top players by balance\n`$top wins` - 💎 Biggest single wins\n`$top games` - 🎮 Most games played',
+                        inline: true
+                    },
+                    {
+                        name: '🎯 **ACHIEVEMENTS**',
+                        value: '• First Win 🏆\n• High Roller 💎\n• Lucky Streak 🍀\n• Jackpot Winner 🎰\n• Daily Grinder ⚡',
+                        inline: false
+                    }
+                ],
+                color: '#9B59B6',
+                thumbnail: '📊'
+            }
+        ];
 
-        await message.channel.send({ embeds: [embed] });
-    },
+        let currentPage = 0;
+        
+        const createEmbed = (page) => {
+            const embed = new EmbedBuilder()
+                .setColor(page.color)
+                .setTitle(`${page.title}`)
+                .setDescription(page.description)
+                .setThumbnail(message.guild?.iconURL() || null)
+                .setFooter({ 
+                    text: `🎰 Casino Bot | Page ${currentPage + 1}/${pages.length} | Use buttons to navigate`,
+                    iconURL: message.client.user.displayAvatarURL()
+                })
+                .setTimestamp();
+
+            page.fields.forEach(field => {
+                embed.addFields(field);
+            });
+
+            return embed;
+        };
+
+        const createButtons = () => {
+            return new ActionRowBuilder()
+                .addComponents(
+                    new ButtonBuilder()
+                        .setCustomId('help_prev')
+                        .setLabel('◀️ Previous')
+                        .setStyle(ButtonStyle.Secondary)
+                        .setDisabled(currentPage === 0),
+                    new ButtonBuilder()
+                        .setCustomId('help_home')
+                        .setLabel('🏠 Home')
+                        .setStyle(ButtonStyle.Primary),
+                    new ButtonBuilder()
+                        .setCustomId('help_next')
+                        .setLabel('Next ▶️')
+                        .setStyle(ButtonStyle.Secondary)
+                        .setDisabled(currentPage === pages.length - 1)
+                );
+        };
+
+        const helpMessage = await message.channel.send({
+            embeds: [createEmbed(pages[currentPage])],
+            components: [createButtons()]
+        });
+
+        const collector = helpMessage.createMessageComponentCollector({
+            time: 300000 // 5 minutes
+        });
+
+        collector.on('collect', async (interaction) => {
+            if (interaction.user.id !== message.author.id) {
+                return interaction.reply({
+                    content: '❌ You can only control your own help menu!',
+                    ephemeral: true
+                });
+            }
+
+            if (interaction.customId === 'help_prev' && currentPage > 0) {
+                currentPage--;
+            } else if (interaction.customId === 'help_next' && currentPage < pages.length - 1) {
+                currentPage++;
+            } else if (interaction.customId === 'help_home') {
+                currentPage = 0;
+            }
+
+            await interaction.update({
+                embeds: [createEmbed(pages[currentPage])],
+                components: [createButtons()]
+            });
+        });
+
+        collector.on('end', () => {
+            helpMessage.edit({
+                components: []
+            }).catch(() => {});
+        });
+    }
 }; 
