@@ -3,17 +3,38 @@ const { getUser, canAfford, addMoney, removeMoney, updateJackpot, resetJackpot, 
 
 const symbols = ['🍒', '🍋', '🍊', '🍉', '🍇', '💎', '💰'];
 const payouts = {
-    '🍒': 5,
-    '🍋': 8,
-    '🍊': 10,
-    '🍉': 15,
-    '🍇': 20,
-    '💎': 50,
-    '💰': 100
+    '🍒': 2,    // Most common, lowest payout
+    '🍋': 3,    
+    '🍊': 5,    
+    '🍉': 8,    
+    '🍇': 12,   
+    '💎': 25,   
+    '💰': 100   // Rarest, highest payout
+};
+
+// Weighted symbol selection for better win chances
+const symbolWeights = {
+    '🍒': 35,   // 35% chance - most common
+    '🍋': 25,   // 25% chance
+    '🍊': 20,   // 20% chance
+    '🍉': 12,   // 12% chance
+    '🍇': 5,    // 5% chance
+    '💎': 2.5,  // 2.5% chance
+    '💰': 0.5   // 0.5% chance - jackpot symbol
 };
 
 function getRandomSymbol() {
-    return symbols[Math.floor(Math.random() * symbols.length)];
+    const random = Math.random() * 100;
+    let cumulative = 0;
+    
+    for (const [symbol, weight] of Object.entries(symbolWeights)) {
+        cumulative += weight;
+        if (random <= cumulative) {
+            return symbol;
+        }
+    }
+    
+    return '🍒'; // Fallback
 }
 
 function createSpinningEmbed(stage, bet, reel1, reel2, reel3, jackpot) {
@@ -124,7 +145,7 @@ function createResultEmbed(reel1, reel2, reel3, result, bet, newBalance, user, j
     // Add payout table for reference
     embed.addFields({
         name: '💎 **Payout Table**',
-        value: '🍒 Cherry: 5x bet\n🍋 Lemon: 8x bet\n🍊 Orange: 10x bet\n🍉 Watermelon: 15x bet\n🍇 Grapes: 20x bet\n💎 Diamond: 50x bet\n💰 Money: 100x bet\n🎰 **JACKPOT**: Triple 💰',
+        value: '🍒 Cherry: 2x bet (35% chance)\n🍋 Lemon: 3x bet (25% chance)\n🍊 Orange: 5x bet (20% chance)\n🍉 Watermelon: 8x bet (12% chance)\n🍇 Grapes: 12x bet (5% chance)\n💎 Diamond: 25x bet (2.5% chance)\n💰 Money: 100x bet (0.5% chance)\n🎰 **JACKPOT**: Triple 💰',
         inline: true
     });
 
@@ -199,9 +220,9 @@ module.exports = {
             embeds: [createSpinningEmbed(0, bet, reel1, reel2, reel3, currentJackpot)] 
         });
         
-        // Animate the spinning reels
+        // Animate the spinning reels (slower for better effect)
         for (let i = 1; i < 6; i++) {
-            await new Promise(resolve => setTimeout(resolve, 800));
+            await new Promise(resolve => setTimeout(resolve, 1500));
             await spinMessage.edit({ 
                 embeds: [createSpinningEmbed(i, bet, reel1, reel2, reel3, currentJackpot)] 
             });

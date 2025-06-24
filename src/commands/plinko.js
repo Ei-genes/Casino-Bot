@@ -5,87 +5,27 @@ const { getUser, canAfford, addMoney, removeMoney, readDb, writeDb } = require('
 const multipliers = [0.2, 0.5, 1.0, 1.5, 2.0, 3.0, 5.0, 10.0, 5.0, 3.0, 2.0, 1.5, 1.0, 0.5, 0.2];
 const multiplierColors = ['🔴', '🟠', '🟡', '🟢', '🔵', '🟣', '🌟', '💎', '🌟', '🟣', '🔵', '🟢', '🟡', '🟠', '🔴'];
 
-function createDroppingEmbed(stage, bet, ballPosition = null) {
+function createDroppingEmbed(stage, bet) {
     const dropStages = [
-        { emoji: '🎯', text: 'Loading the Plinko board...' },
-        { emoji: '⚪', text: 'Dropping the ball...' },
-        { emoji: '🔄', text: 'Ball bouncing off pegs...' },
-        { emoji: '⚡', text: 'Ball finding its path...' },
-        { emoji: '🎪', text: 'Ball approaching bottom...' },
-        { emoji: '🎊', text: 'Calculating your prize...' }
+        '🎯 **Preparing Plinko board...**',
+        '⚪ **Dropping the ball...**',
+        '🔄 **Ball bouncing through pegs...**',
+        '🎊 **Calculating your prize...**'
     ];
-
-    const currentStage = dropStages[stage];
     
-    const embed = new EmbedBuilder()
+    return new EmbedBuilder()
         .setColor('#FFD700')
-        .setTitle('🎯 **PLINKO GAME** 🎯')
-        .setDescription(`**Welcome to the Plinko Board!**\n\n${currentStage.emoji} ${currentStage.text}`)
+        .setTitle('🎯 **PLINKO DROP** 🎯')
+        .setDescription(dropStages[stage])
         .addFields(
             { name: '💰 **Your Bet**', value: `$${bet.toLocaleString()}`, inline: true },
-            { name: '🎯 **Game Type**', value: 'Classic Plinko', inline: true },
-            { name: '🎲 **Max Multiplier**', value: '10x', inline: true }
-        );
-
-    if (ballPosition !== null) {
-        embed.addFields({
-            name: '⚪ **Ball Position**',
-            value: `Currently at position ${ballPosition + 1}/15`,
-            inline: false
-        });
-    }
-
-    // Add visual plinko board
-    embed.addFields({
-        name: '🎯 **Plinko Board**',
-        value: createPlinkoBoard(ballPosition),
-        inline: false
-    });
-
-    embed.setFooter({ text: '🎯 Watch your ball bounce through the pegs!' });
-    
-    return embed;
+            { name: '🎯 **Max Multiplier**', value: '10x Center', inline: true },
+            { name: '🎲 **Status**', value: 'Dropping...', inline: true }
+        )
+        .setFooter({ text: '🎯 The ball is bouncing through the pegs!' });
 }
 
-function createPlinkoBoard(ballPosition = null) {
-    let board = '```\n';
-    
-    // Top of board
-    board += '        ⚪\n';
-    board += '       / \\\n';
-    
-    // Peg rows
-    const pegRows = [
-        '      ● ● ●',
-        '     ● ● ● ●',
-        '    ● ● ● ● ●',
-        '   ● ● ● ● ● ●',
-        '  ● ● ● ● ● ● ●'
-    ];
-    
-    pegRows.forEach(row => {
-        board += row + '\n';
-    });
-    
-    // Bottom multipliers
-    board += '\n';
-    board += '0.2 0.5 1.0 1.5 2.0 3.0 5.0 10x 5.0 3.0 2.0 1.5 1.0 0.5 0.2\n';
-    
-    if (ballPosition !== null) {
-        let indicator = '';
-        for (let i = 0; i < 15; i++) {
-            if (i === ballPosition) {
-                indicator += ' ⚪ ';
-            } else {
-                indicator += '   ';
-            }
-        }
-        board += indicator + '\n';
-    }
-    
-    board += '```';
-    return board;
-}
+// Removed complex ASCII board animation
 
 function createResultEmbed(bet, finalPosition, multiplier, winAmount, newBalance, user) {
     const isWin = winAmount > bet;
@@ -156,10 +96,10 @@ function createResultEmbed(bet, finalPosition, multiplier, winAmount, newBalance
         inline: false
     });
 
-    // Add final board state
+    // Add simple result display
     embed.addFields({
-        name: '🎯 **Final Board**',
-        value: createPlinkoBoard(finalPosition),
+        name: '🎯 **Ball Landed**',
+        value: `${multiplierColors[finalPosition]} **Position ${finalPosition + 1}/15** ${multiplierColors[finalPosition]}`,
         inline: false
     });
 
@@ -238,18 +178,19 @@ module.exports = {
             return message.channel.send({ embeds: [embed] });
         }
 
-        // Start dropping animation
+        // Simple dropping process
         const dropMessage = await message.channel.send({ 
             embeds: [createDroppingEmbed(0, bet)] 
         });
         
-        // Animate the dropping process
-        for (let i = 1; i < 6; i++) {
-            await new Promise(resolve => setTimeout(resolve, 1500));
-            await dropMessage.edit({ 
-                embeds: [createDroppingEmbed(i, bet)] 
-            });
-        }
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        await dropMessage.edit({ embeds: [createDroppingEmbed(1, bet)] });
+        
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        await dropMessage.edit({ embeds: [createDroppingEmbed(2, bet)] });
+        
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        await dropMessage.edit({ embeds: [createDroppingEmbed(3, bet)] });
 
         // Simulate ball path and get final position
         const finalPosition = simulatePlinkoPath();
