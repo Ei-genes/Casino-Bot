@@ -257,82 +257,42 @@ module.exports = {
 
         // Set up button collector
         const collector = gameMessage.createMessageComponentCollector({
-            time: 300000 // 5 minutes
+            time: 300000, // 5 minutes
+            filter: i => i.user.id === userId
         });
 
         collector.on('collect', async (interaction) => {
-            if (interaction.user.id !== userId) {
-                return interaction.reply({
-                    content: '❌ This is not your minefield!',
-                    ephemeral: true
-                });
+            // Defer the interaction immediately to prevent timeout
+            if (!interaction.deferred && !interaction.replied) {
+                await interaction.deferUpdate();
             }
-
-            const currentGame = activeGames.get(userId);
-            if (!currentGame || currentGame.gameOver) {
-                return interaction.reply({
-                    content: '❌ Game not found or already ended!',
-                    ephemeral: true
-                });
-            }
-
-            if (interaction.customId.startsWith('mine_cashout_')) {
-                // Cash out
-                const winAmount = Math.floor(currentGame.bet * currentGame.currentMultiplier);
-                addMoney(userId, winAmount);
-                
-                // Update stats
-                const db = readDb();
-                db.users[userId].stats.gamesPlayed++;
-                db.users[userId].stats.gamesWon++;
-                if (winAmount > db.users[userId].stats.biggestWin) {
-                    db.users[userId].stats.biggestWin = winAmount;
-                }
-                writeDb(db);
-
-                currentGame.gameOver = true;
-                const cashOutEmbed = createGameEmbed(currentGame, false, true);
-                cashOutEmbed.addFields({
-                    name: '💳 **New Balance**',
-                    value: `$${getUser(userId).balance.toLocaleString()}`,
-                    inline: true
-                });
-                
-                const finalGrid = createMineGrid(currentGame, true);
-                
-                await interaction.update({
-                    embeds: [cashOutEmbed],
-                    components: finalGrid
-                });
-                
-                activeGames.delete(userId);
-                collector.stop();
-            } else if (interaction.customId.startsWith('mine_')) {
-                // Tile reveal
-                const parts = interaction.customId.split('_');
-                const tileIndex = parseInt(parts[3]);
-                
-                if (currentGame.revealedTiles.includes(tileIndex)) {
-                    return interaction.reply({
-                        content: '❌ Tile already revealed!',
+            
+            try {
+                const currentGame = activeGames.get(userId);
+                if (!currentGame || currentGame.gameOver) {
+                    return await interaction.followUp({
+                        content: '❌ Game not found or already ended!',
                         ephemeral: true
                     });
                 }
-                
-                currentGame.revealedTiles.push(tileIndex);
-                
-                // Check if mine hit
-                if (currentGame.field[tileIndex]) {
-                    // Hit a mine - game over
-                    currentGame.gameOver = true;
+
+                if (interaction.customId.startsWith('mine_cashout_')) {
+                    // Cash out
+                    const winAmount = Math.floor(currentGame.bet * currentGame.currentMultiplier);
+                    addMoney(userId, winAmount);
                     
                     // Update stats
                     const db = readDb();
                     db.users[userId].stats.gamesPlayed++;
+                    db.users[userId].stats.gamesWon++;
+                    if (winAmount > db.users[userId].stats.biggestWin) {
+                        db.users[userId].stats.biggestWin = winAmount;
+                    }
                     writeDb(db);
 
-                    const mineEmbed = createGameEmbed(currentGame, true);
-                    mineEmbed.addFields({
+                    currentGame.gameOver = true;
+                    const cashOutEmbed = createGameEmbed(currentGame, false, true);
+                    cashOutEmbed.addFields({
                         name: '💳 **New Balance**',
                         value: `$${getUser(userId).balance.toLocaleString()}`,
                         inline: true
@@ -340,40 +300,39 @@ module.exports = {
                     
                     const finalGrid = createMineGrid(currentGame, true);
                     
-                    await interaction.update({
-                        embeds: [mineEmbed],
+                    await interaction.editReply({
+                        embeds: [cashOutEmbed],
                         components: finalGrid
                     });
                     
                     activeGames.delete(userId);
                     collector.stop();
-                } else {
-                    // Safe tile
-                    currentGame.revealed++;
-                    currentGame.currentMultiplier = calculateMultiplier(
-                        currentGame.revealed, 
-                        25 - currentGame.mines, 
-                        currentGame.mines
-                    );
+                } else if (interaction.customId.startsWith('mine_')) {
+                    // Tile reveal
+                    const parts = interaction.customId.split('_');
+                    const tileIndex = parseInt(parts[3]);
                     
-                    // Check if all safe tiles revealed
-                    if (currentGame.revealed === 25 - currentGame.mines) {
-                        // Perfect game!
-                        const winAmount = Math.floor(currentGame.bet * currentGame.currentMultiplier);
-                        addMoney(userId, winAmount);
+                    if (currentGame.revealedTiles.includes(tileIndex)) {
+                        return await interaction.followUp({
+                            content: '❌ Tile already revealed!',
+                            ephemeral: true
+                        });
+                    }
+                    
+                    currentGame.revealedTiles.push(tileIndex);
+                    
+                    // Check if mine hit
+                    if (currentGame.field[tileIndex]) {
+                        // Hit a mine - game over
+                        currentGame.gameOver = true;
                         
                         // Update stats
                         const db = readDb();
                         db.users[userId].stats.gamesPlayed++;
-                        db.users[userId].stats.gamesWon++;
-                        if (winAmount > db.users[userId].stats.biggestWin) {
-                            db.users[userId].stats.biggestWin = winAmount;
-                        }
                         writeDb(db);
 
-                        currentGame.gameOver = true;
-                        const perfectEmbed = createGameEmbed(currentGame, false, false);
-                        perfectEmbed.addFields({
+                        const mineEmbed = createGameEmbed(currentGame, true);
+                        mineEmbed.addFields({
                             name: '💳 **New Balance**',
                             value: `$${getUser(userId).balance.toLocaleString()}`,
                             inline: true
@@ -381,23 +340,82 @@ module.exports = {
                         
                         const finalGrid = createMineGrid(currentGame, true);
                         
-                        await interaction.update({
-                            embeds: [perfectEmbed],
+                        await interaction.editReply({
+                            embeds: [mineEmbed],
                             components: finalGrid
                         });
                         
                         activeGames.delete(userId);
                         collector.stop();
                     } else {
-                        // Continue game
-                        const updatedEmbed = createGameEmbed(currentGame);
-                        const updatedGrid = createMineGrid(currentGame);
+                        // Safe tile
+                        currentGame.revealed++;
+                        currentGame.currentMultiplier = calculateMultiplier(
+                            currentGame.revealed, 
+                            25 - currentGame.mines, 
+                            currentGame.mines
+                        );
                         
-                        await interaction.update({
-                            embeds: [updatedEmbed],
-                            components: updatedGrid
+                        // Check if all safe tiles revealed
+                        if (currentGame.revealed === 25 - currentGame.mines) {
+                            // Perfect game!
+                            const winAmount = Math.floor(currentGame.bet * currentGame.currentMultiplier);
+                            addMoney(userId, winAmount);
+                            
+                            // Update stats
+                            const db = readDb();
+                            db.users[userId].stats.gamesPlayed++;
+                            db.users[userId].stats.gamesWon++;
+                            if (winAmount > db.users[userId].stats.biggestWin) {
+                                db.users[userId].stats.biggestWin = winAmount;
+                            }
+                            writeDb(db);
+
+                            currentGame.gameOver = true;
+                            const perfectEmbed = createGameEmbed(currentGame, false, false);
+                            perfectEmbed.addFields({
+                                name: '💳 **New Balance**',
+                                value: `$${getUser(userId).balance.toLocaleString()}`,
+                                inline: true
+                            });
+                            
+                            const finalGrid = createMineGrid(currentGame, true);
+                            
+                            await interaction.editReply({
+                                embeds: [perfectEmbed],
+                                components: finalGrid
+                            });
+                            
+                            activeGames.delete(userId);
+                            collector.stop();
+                        } else {
+                            // Continue game
+                            const updatedEmbed = createGameEmbed(currentGame);
+                            const updatedGrid = createMineGrid(currentGame);
+                            
+                            await interaction.editReply({
+                                embeds: [updatedEmbed],
+                                components: updatedGrid
+                            });
+                        }
+                    }
+                }
+            } catch (error) {
+                console.error('Mines interaction error:', error);
+                try {
+                    if (!interaction.replied && !interaction.deferred) {
+                        await interaction.reply({
+                            content: '❌ An error occurred while processing your action!',
+                            ephemeral: true
+                        });
+                    } else {
+                        await interaction.followUp({
+                            content: '❌ An error occurred while processing your action!',
+                            ephemeral: true
                         });
                     }
+                } catch (replyError) {
+                    console.error('Failed to send error reply:', replyError);
                 }
             }
         });
