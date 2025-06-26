@@ -1,12 +1,12 @@
 {
   "users": {
     "587711397241290756": {
-      "balance": 8742,
+      "balance": 6742,
       "stats": {
-        "gamesPlayed": 8,
+        "gamesPlayed": 9,
         "gamesWon": 5,
         "totalWinnings": 11150,
-        "totalLost": 4408,
+        "totalLost": 6408,
         "biggestWin": 5000,
         "winStreak": 0,
         "currentStreak": 0

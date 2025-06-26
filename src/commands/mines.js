@@ -136,7 +136,7 @@ function createMineGrid(game, showAll = false) {
             }
             
             const button = new ButtonBuilder()
-                .setCustomId(`mine_${game.gameId}_${index}`)
+                .setCustomId(`mine_${index}`)
                 .setEmoji(emoji)
                 .setStyle(style)
                 .setDisabled(disabled);
@@ -147,17 +147,20 @@ function createMineGrid(game, showAll = false) {
         components.push(actionRow);
     }
     
-    // Add cash out button if game is active
+    // Add cash out button to the last row if game is active and player has revealed tiles
     if (!showAll && !gameOver && game.revealed > 0) {
-        const cashOutRow = new ActionRowBuilder()
-            .addComponents(
-                new ButtonBuilder()
-                    .setCustomId(`mine_cashout_${game.gameId}`)
-                    .setLabel(`💰 Cash Out (${game.currentMultiplier}x)`)
-                    .setStyle(ButtonStyle.Success)
-                    .setEmoji('💰')
-            );
-        components.push(cashOutRow);
+        // Remove the last button from the last row to make space for cash out button
+        const lastRow = components[4];
+        lastRow.components.pop(); // Remove the last mine button (index 24)
+        
+        // Add cash out button to the last row
+        const cashOutButton = new ButtonBuilder()
+            .setCustomId('mine_cashout')
+            .setLabel(`💰 Cash Out (${game.currentMultiplier}x)`)
+            .setStyle(ButtonStyle.Success)
+            .setEmoji('💰');
+            
+        lastRow.addComponents(cashOutButton);
     }
     
     return components;
@@ -262,21 +265,16 @@ module.exports = {
         });
 
         collector.on('collect', async (interaction) => {
-            // Defer the interaction immediately to prevent timeout
-            if (!interaction.deferred && !interaction.replied) {
-                await interaction.deferUpdate();
-            }
-            
             try {
                 const currentGame = activeGames.get(userId);
                 if (!currentGame || currentGame.gameOver) {
-                    return await interaction.followUp({
+                    return await interaction.reply({
                         content: '❌ Game not found or already ended!',
                         ephemeral: true
                     });
                 }
 
-                if (interaction.customId.startsWith('mine_cashout_')) {
+                if (interaction.customId === 'mine_cashout') {
                     // Cash out
                     const winAmount = Math.floor(currentGame.bet * currentGame.currentMultiplier);
                     addMoney(userId, winAmount);
@@ -300,7 +298,7 @@ module.exports = {
                     
                     const finalGrid = createMineGrid(currentGame, true);
                     
-                    await interaction.editReply({
+                    await interaction.update({
                         embeds: [cashOutEmbed],
                         components: finalGrid
                     });
@@ -309,11 +307,10 @@ module.exports = {
                     collector.stop();
                 } else if (interaction.customId.startsWith('mine_')) {
                     // Tile reveal
-                    const parts = interaction.customId.split('_');
-                    const tileIndex = parseInt(parts[3]);
+                    const tileIndex = parseInt(interaction.customId.split('_')[1]);
                     
                     if (currentGame.revealedTiles.includes(tileIndex)) {
-                        return await interaction.followUp({
+                        return await interaction.reply({
                             content: '❌ Tile already revealed!',
                             ephemeral: true
                         });
@@ -340,7 +337,7 @@ module.exports = {
                         
                         const finalGrid = createMineGrid(currentGame, true);
                         
-                        await interaction.editReply({
+                        await interaction.update({
                             embeds: [mineEmbed],
                             components: finalGrid
                         });
@@ -381,7 +378,7 @@ module.exports = {
                             
                             const finalGrid = createMineGrid(currentGame, true);
                             
-                            await interaction.editReply({
+                            await interaction.update({
                                 embeds: [perfectEmbed],
                                 components: finalGrid
                             });
@@ -393,7 +390,7 @@ module.exports = {
                             const updatedEmbed = createGameEmbed(currentGame);
                             const updatedGrid = createMineGrid(currentGame);
                             
-                            await interaction.editReply({
+                            await interaction.update({
                                 embeds: [updatedEmbed],
                                 components: updatedGrid
                             });
@@ -403,13 +400,8 @@ module.exports = {
             } catch (error) {
                 console.error('Mines interaction error:', error);
                 try {
-                    if (!interaction.replied && !interaction.deferred) {
+                    if (!interaction.replied) {
                         await interaction.reply({
-                            content: '❌ An error occurred while processing your action!',
-                            ephemeral: true
-                        });
-                    } else {
-                        await interaction.followUp({
                             content: '❌ An error occurred while processing your action!',
                             ephemeral: true
                         });
